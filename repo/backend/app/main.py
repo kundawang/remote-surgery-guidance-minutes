@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api import surgery, audio, transcript, summary, archive, websocket
+from .api import surgery, audio, transcript, summary, archive, websocket, barrel_report
 from .core.config import settings
 from .core.database import Base, engine
 
@@ -25,6 +25,7 @@ app.include_router(audio.router, prefix="/api/audio", tags=["音频处理"])
 app.include_router(transcript.router, prefix="/api/transcript", tags=["语音转写"])
 app.include_router(summary.router, prefix="/api/summary", tags=["AI摘要"])
 app.include_router(archive.router, prefix="/api/archive", tags=["邮件归档"])
+app.include_router(barrel_report.router, prefix="/api/barrel-report", tags=["桶边品评报告"])
 app.include_router(websocket.router, tags=["WebSocket实时通信"])
 
 
