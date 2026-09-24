@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from ..core.config import settings
 from ..models.schemas import TranscriptSegment, SurgerySummaryResponse
+from ..utils.intervals import total_duration
 
 
 class SummaryGenerator:
@@ -190,18 +191,18 @@ class SummaryGenerator:
 
     def _generate_overall_assessment(self, transcripts: List[TranscriptSegment], 
                                       session_info: Dict[str, Any]) -> str:
-        duration = 0
-        if transcripts:
-            duration = transcripts[-1].end_time
-        
-        surgeon_speaking = sum(
-            t.end_time - t.start_time 
-            for t in transcripts 
+        duration = total_duration(
+            (t.start_time, t.end_time) for t in transcripts
+        )
+
+        surgeon_speaking = total_duration(
+            (t.start_time, t.end_time)
+            for t in transcripts
             if t.speaker_role == "主刀医生"
         )
-        expert_speaking = sum(
-            t.end_time - t.start_time 
-            for t in transcripts 
+        expert_speaking = total_duration(
+            (t.start_time, t.end_time)
+            for t in transcripts
             if t.speaker_role == "远程专家"
         )
         

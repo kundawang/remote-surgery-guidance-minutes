@@ -24,6 +24,7 @@ class SurgerySessionResponse(BaseModel):
     remote_expert: str
     operating_room: str
     status: str
+    error_message: Optional[str] = None
     start_time: datetime
     end_time: Optional[datetime] = None
     video_source: Optional[str] = None

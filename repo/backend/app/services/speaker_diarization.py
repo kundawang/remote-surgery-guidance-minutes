@@ -2,6 +2,7 @@ import os
 import numpy as np
 from typing import List, Dict, Any, Optional
 from ..core.config import settings
+from ..utils.intervals import total_duration
 
 
 class SpeakerDiarization:
@@ -136,29 +137,72 @@ class SpeakerDiarization:
         return segments
 
     def get_speaker_statistics(self, segments: List[Dict[str, Any]]) -> Dict[str, Any]:
-        speaker_stats = {}
-        
+        speaker_intervals = {}
+        speaker_counts = {}
+
         for seg in segments:
             speaker = seg.get("speaker", "未知")
-            duration = seg.get("duration", 0)
-            
-            if speaker not in speaker_stats:
-                speaker_stats[speaker] = {
-                    "total_duration": 0.0,
-                    "segment_count": 0,
-                    "avg_segment_duration": 0.0
-                }
-            
-            speaker_stats[speaker]["total_duration"] += duration
-            speaker_stats[speaker]["segment_count"] += 1
-        
+            start_time = float(seg.get("start_time", 0))
+            end_time = float(seg.get("end_time", start_time + seg.get("duration", 0)))
+
+            speaker_intervals.setdefault(speaker, []).append((start_time, end_time))
+            speaker_counts[speaker] = speaker_counts.get(speaker, 0) + 1
+
+        speaker_stats = {}
+        for speaker, intervals in speaker_intervals.items():
+            merged_total = total_duration(intervals)
+            segment_count = speaker_counts[speaker]
+            speaker_stats[speaker] = {
+                "total_duration": merged_total,
+                "segment_count": segment_count,
+                "avg_segment_duration": 0.0
+            }
+
         for speaker, stats in speaker_stats.items():
             if stats["segment_count"] > 0:
                 stats["avg_segment_duration"] = (
                     stats["total_duration"] / stats["segment_count"]
                 )
-        
+
         return speaker_stats
+
+    def get_total_duration(self, segments: List[Dict[str, Any]],
+                           audio_duration: Optional[float] = None) -> float:
+        intervals = [
+            (float(seg.get("start_time", 0)),
+             float(seg.get("end_time", seg.get("start_time", 0) + seg.get("duration", 0))))
+            for seg in segments
+        ]
+        return total_duration(intervals, audio_duration=audio_duration)
+
+    def resolve_session_speakers(self, db, session_db_id: int,
+                                 labels: List[str]) -> Dict[str, Any]:
+        """按 pyannote label 为会话解析发音人编号和姓名。
+
+        同一会话内每个 label 对应唯一记录，重复处理时按 label 复用已有记录，
+        新 label 的编号从会话内现有最大编号继续递增。
+        """
+        from ..core.database import Speaker
+
+        existing = db.query(Speaker).filter(Speaker.session_id == session_db_id).all()
+        by_label = {speaker.label: speaker for speaker in existing}
+        next_index = max((speaker.speaker_index for speaker in existing), default=0) + 1
+
+        for label in sorted(set(labels)):
+            if label in by_label:
+                continue
+            speaker = Speaker(
+                session_id=session_db_id,
+                label=label,
+                speaker_index=next_index,
+                name=f"发音人{next_index}"
+            )
+            db.add(speaker)
+            by_label[label] = speaker
+            next_index += 1
+
+        db.flush()
+        return by_label
 
     def merge_short_segments(self, segments: List[Dict[str, Any]], 
                              min_duration: float = 1.0) -> List[Dict[str, Any]]:
