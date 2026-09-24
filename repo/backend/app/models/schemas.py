@@ -94,3 +94,20 @@ class EmailArchiveResponse(BaseModel):
 class WebSocketMessage(BaseModel):
     type: str
     data: Dict[str, Any]
+
+
+class HearingReportRequest(BaseModel):
+    hearing_info: Dict[str, Any] = Field(default_factory=dict)
+    locations: List[str] = Field(default_factory=list)
+    solutions: List[str] = Field(default_factory=list)
+    transcripts: List[TranscriptSegment] = Field(default_factory=list)
+
+
+class HearingReportResponse(BaseModel):
+    minutes: str
+    cause_analysis: str
+    action_matrix: List[Dict[str, Any]]
+    full_transcript: str
+    report_markdown: str
+    is_fallback: bool = False
+    fallback_notice: Optional[str] = None
