@@ -97,3 +97,50 @@ class SurgerySummary(Base):
     archive_email_id = Column(String(200), nullable=True)
 
     surgery_session = relationship("SurgerySession", back_populates="surgery_summary")
+
+
+class NoiseDistrict(Base):
+    __tablename__ = "noise_districts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    devices = relationship("NoiseDevice", back_populates="district")
+
+
+class NoiseDevice(Base):
+    __tablename__ = "noise_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    district_id = Column(Integer, ForeignKey("noise_districts.id"), index=True)
+    name = Column(String(100))
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    district = relationship("NoiseDistrict", back_populates="devices")
+    recordings = relationship("NoiseRecording", back_populates="device")
+
+
+class NoiseRecording(Base):
+    __tablename__ = "noise_recordings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("noise_devices.id"), index=True)
+    # noise_level 为 None 表示该条记录无有效数据；0.0 是合法的低噪声值，必须参与统计
+    noise_level = Column(Float, nullable=True)
+    recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    device = relationship("NoiseDevice", back_populates="recordings")
+
+
+class NoiseReportPoint(Base):
+    __tablename__ = "noise_report_points"
+
+    id = Column(Integer, primary_key=True, index=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    description = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
