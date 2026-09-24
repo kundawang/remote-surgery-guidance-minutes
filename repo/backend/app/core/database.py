@@ -91,6 +91,7 @@ class SurgerySummary(Base):
     technical_improvements = Column(JSON)
     complications = Column(JSON)
     overall_assessment = Column(Text)
+    source = Column(String(20), default="openai")
     generated_at = Column(DateTime, default=datetime.utcnow)
     archived = Column(Boolean, default=False)
     archive_email_sent = Column(Boolean, default=False)

@@ -1,8 +1,21 @@
 import json
+import re
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from ..core.config import settings
 from ..models.schemas import TranscriptSegment, SurgerySummaryResponse
+
+
+SECTION_KEYWORDS = [
+    ("overall_assessment", ["总体评估", "总体评价"]),
+    ("key_points", ["手术要点", "关键要点"]),
+    ("surgical_steps", ["手术步骤"]),
+    ("anatomical_landmarks", ["解剖标识", "解剖标志"]),
+    ("technical_improvements", ["技术改进", "改进建议"]),
+    ("complications", ["并发症", "风险"]),
+]
+
+HEADING_PATTERN = re.compile(r"^#{1,6}\s*(.*?)\s*#*\s*$")
 
 
 class SummaryGenerator:
@@ -71,21 +84,91 @@ class SummaryGenerator:
                 max_tokens=4096,
                 response_format={"type": "json_object"}
             )
-            
-            result = json.loads(response.choices[0].message.content)
-            
-            return SurgerySummaryResponse(
-                key_points=result.get("key_points", []),
-                surgical_steps=result.get("surgical_steps", []),
-                anatomical_landmarks=result.get("anatomical_landmarks", []),
-                technical_improvements=result.get("technical_improvements", []),
-                complications=result.get("complications", []),
-                overall_assessment=result.get("overall_assessment", "")
-            )
-            
         except Exception as e:
             print(f"OpenAI API error: {e}")
             return self._generate_fallback(transcripts, session_info)
+
+        content = response.choices[0].message.content or ""
+        parsed = self._parse_model_output(content)
+        return SurgerySummaryResponse(source="openai", **parsed)
+
+    def _parse_model_output(self, content: str) -> Dict[str, Any]:
+        try:
+            result = json.loads(content)
+            if isinstance(result, dict):
+                return {
+                    "key_points": result.get("key_points", []),
+                    "surgical_steps": result.get("surgical_steps", []),
+                    "anatomical_landmarks": result.get("anatomical_landmarks", []),
+                    "technical_improvements": result.get("technical_improvements", []),
+                    "complications": result.get("complications", []),
+                    "overall_assessment": result.get("overall_assessment", "")
+                }
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        sections = self._parse_markdown_sections(content)
+        if sections is None:
+            return {
+                "key_points": [],
+                "surgical_steps": [],
+                "anatomical_landmarks": [],
+                "technical_improvements": [],
+                "complications": [],
+                "overall_assessment": content.strip()
+            }
+        return sections
+
+    def _parse_markdown_sections(self, content: str) -> Optional[Dict[str, Any]]:
+        buffers: Dict[str, List[str]] = {key: [] for key, _ in SECTION_KEYWORDS}
+        current: Optional[str] = None
+        matched_any = False
+
+        for line in content.splitlines():
+            heading = HEADING_PATTERN.match(line.strip())
+            if heading:
+                title = heading.group(1)
+                target = None
+                for key, keywords in SECTION_KEYWORDS:
+                    if any(kw in title for kw in keywords):
+                        target = key
+                        break
+                if target is not None:
+                    current = target
+                    matched_any = True
+                    continue
+            if current is not None:
+                buffers[current].append(line)
+
+        if not matched_any:
+            return None
+
+        return {
+            "key_points": self._lines_to_list(buffers["key_points"]),
+            "surgical_steps": self._lines_to_steps(buffers["surgical_steps"]),
+            "anatomical_landmarks": self._lines_to_list(buffers["anatomical_landmarks"]),
+            "technical_improvements": self._lines_to_list(buffers["technical_improvements"]),
+            "complications": self._lines_to_list(buffers["complications"]),
+            "overall_assessment": "\n".join(buffers["overall_assessment"]).strip()
+        }
+
+    def _lines_to_list(self, lines: List[str]) -> List[str]:
+        items = []
+        for line in lines:
+            text = re.sub(r"^\s*(?:[-*•]|\d+[.、)])\s*", "", line).strip()
+            if text:
+                items.append(text)
+        return items
+
+    def _lines_to_steps(self, lines: List[str]) -> List[Dict[str, Any]]:
+        steps = []
+        for index, text in enumerate(self._lines_to_list(lines), start=1):
+            steps.append({
+                "time": 0.0,
+                "step": f"步骤{index}",
+                "description": text
+            })
+        return steps
 
     def _generate_fallback(
         self,
@@ -105,7 +188,8 @@ class SummaryGenerator:
             anatomical_landmarks=anatomical_landmarks,
             technical_improvements=technical_improvements,
             complications=complications,
-            overall_assessment=overall_assessment
+            overall_assessment=overall_assessment,
+            source="fallback"
         )
 
     def _format_transcripts(self, transcripts: List[TranscriptSegment]) -> str:
@@ -193,6 +277,11 @@ class SummaryGenerator:
         duration = 0
         if transcripts:
             duration = transcripts[-1].end_time
+
+        participants = session_info.get("participants")
+        if participants is None:
+            participants = sorted({t.speaker for t in transcripts if t.speaker})
+        participant_count = len(participants)
         
         surgeon_speaking = sum(
             t.end_time - t.start_time 
@@ -204,6 +293,29 @@ class SummaryGenerator:
             for t in transcripts 
             if t.speaker_role == "远程专家"
         )
+
+        complications = self._extract_complications(transcripts)
+        improvements = self._extract_improvements(transcripts)
+
+        if transcripts:
+            avg_confidence = sum(t.confidence for t in transcripts) / len(transcripts)
+        else:
+            avg_confidence = 0.0
+
+        if participant_count > 0:
+            participant_text = f"共计{participant_count}人参与讨论"
+        else:
+            participant_text = "参会人数未记录"
+
+        conclusion_parts = []
+        if complications:
+            conclusion_parts.append(
+                f"术中共记录{len(complications)}处需关注的风险点，建议术后重点复盘。"
+            )
+        else:
+            conclusion_parts.append("术中未记录明显风险点。")
+        if avg_confidence < 0.7:
+            conclusion_parts.append("转写置信度偏低，纪要内容建议人工复核。")
         
         assessment = f"""
 本次{session_info.get('surgery_type', '手术')}由{session_info.get('primary_surgeon', '主刀医生')}主刀，
@@ -212,10 +324,10 @@ class SummaryGenerator:
 手术总时长约{int(duration // 60)}分钟，其中主刀医生发言约{int(surgeon_speaking // 60)}分钟，
 远程专家指导约{int(expert_speaking // 60)}分钟。
 
-共记录有效对话{len(transcripts)}条，涉及解剖标识{len(self._extract_anatomical_terms(transcripts))}处。
+{participant_text}，共记录有效对话{len(transcripts)}条，涉及解剖标识{len(self._extract_anatomical_terms(transcripts))}处。
 
-远程专家在手术过程中提供了{len(self._extract_improvements(transcripts))}条技术建议，
-手术过程顺利，主刀与专家配合良好。
+远程专家在手术过程中提供了{len(improvements)}条技术建议。
+{''.join(conclusion_parts)}
         """.strip()
         
         return assessment

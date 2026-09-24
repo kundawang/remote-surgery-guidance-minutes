@@ -16,7 +16,12 @@ export const SummaryView: React.FC<SummaryViewProps> = ({ summary, className = '
   return (
     <div className={`space-y-6 ${className}`}>
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
-        <h3 className="text-xl font-bold mb-2">📊 总体评估</h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xl font-bold">📊 总体评估</h3>
+          <span className="text-xs px-2 py-1 rounded-full bg-white/20">
+            {summary.source === 'fallback' ? '离线兜底生成' : 'AI 生成'}
+          </span>
+        </div>
         <p className="leading-relaxed opacity-95">{summary.overall_assessment}</p>
       </div>
 

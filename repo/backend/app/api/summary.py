@@ -62,6 +62,7 @@ async def generate_summary(
         existing_summary.technical_improvements = summary.technical_improvements
         existing_summary.complications = summary.complications
         existing_summary.overall_assessment = summary.overall_assessment
+        existing_summary.source = summary.source
     else:
         db_summary = SurgerySummary(
             session_id=session.id,
@@ -70,7 +71,8 @@ async def generate_summary(
             anatomical_landmarks=summary.anatomical_landmarks,
             technical_improvements=summary.technical_improvements,
             complications=summary.complications,
-            overall_assessment=summary.overall_assessment
+            overall_assessment=summary.overall_assessment,
+            source=summary.source
         )
         db.add(db_summary)
     
@@ -98,7 +100,8 @@ def get_summary(
         anatomical_landmarks=summary.anatomical_landmarks,
         technical_improvements=summary.technical_improvements,
         complications=summary.complications,
-        overall_assessment=summary.overall_assessment
+        overall_assessment=summary.overall_assessment,
+        source=summary.source or "openai"
     )
 
 

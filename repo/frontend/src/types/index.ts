@@ -52,6 +52,7 @@ export interface SurgerySummary {
   technical_improvements: string[]
   complications: string[]
   overall_assessment: string
+  source?: 'openai' | 'fallback'
 }
 
 export interface AudioAnalysis {

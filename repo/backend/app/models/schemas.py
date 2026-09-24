@@ -76,6 +76,7 @@ class SurgerySummaryResponse(BaseModel):
     technical_improvements: List[str]
     complications: List[str]
     overall_assessment: str
+    source: str = "openai"
 
 
 class EmailArchiveRequest(BaseModel):
