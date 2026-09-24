@@ -94,3 +94,49 @@ class EmailArchiveResponse(BaseModel):
 class WebSocketMessage(BaseModel):
     type: str
     data: Dict[str, Any]
+
+
+class BarrelParcelInput(BaseModel):
+    name: str
+    variety: str
+    volume_liters: float
+    lab_metrics: Dict[str, float] = {}
+
+
+class BarrelTastingRequest(BaseModel):
+    vintage: int
+    wine_name: Optional[str] = None
+    winemaker: Optional[str] = None
+    parcels: List[BarrelParcelInput] = []
+    tasting_notes: List[str] = []
+    keywords: List[str] = []
+
+
+class BlendComponent(BaseModel):
+    variety: str
+    ratio_percent: Optional[float] = None
+    volume_liters: Optional[float] = None
+    status: str
+    note: Optional[str] = None
+
+
+class BarrelTastingReportResponse(BaseModel):
+    vintage: int
+    title: str
+    markdown: str
+    blend_components: List[BlendComponent]
+    source: str
+    generated_at: str
+
+
+class BarrelReportEmailRequest(BaseModel):
+    report: BarrelTastingReportResponse
+    recipient_email: Optional[str] = None
+
+
+class BarrelReportEmailResponse(BaseModel):
+    success: bool
+    message_id: Optional[str] = None
+    recipient: Optional[str] = None
+    subject: Optional[str] = None
+    error: Optional[str] = None
