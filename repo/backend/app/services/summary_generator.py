@@ -1,8 +1,11 @@
 import json
+import logging
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from ..core.config import settings
 from ..models.schemas import TranscriptSegment, SurgerySummaryResponse
+
+logger = logging.getLogger(__name__)
 
 
 class SummaryGenerator:
@@ -83,8 +86,8 @@ class SummaryGenerator:
                 overall_assessment=result.get("overall_assessment", "")
             )
             
-        except Exception as e:
-            print(f"OpenAI API error: {e}")
+        except Exception:
+            logger.exception("OpenAI 摘要生成失败，回退到本地生成")
             return self._generate_fallback(transcripts, session_info)
 
     def _generate_fallback(

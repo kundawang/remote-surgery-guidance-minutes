@@ -4,7 +4,8 @@ from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 from ..core.config import settings
 
-engine = create_engine(settings.DATABASE_URL)
+connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -31,6 +32,8 @@ class SurgerySession(Base):
     start_time = Column(DateTime, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
     status = Column(String(20), default="active")
+    summary_status = Column(String(20), default="pending")
+    summary_error = Column(Text, nullable=True)
     video_source = Column(String(500))
     audio_source = Column(String(500))
     created_at = Column(DateTime, default=datetime.utcnow)

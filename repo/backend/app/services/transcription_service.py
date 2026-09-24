@@ -1,9 +1,12 @@
+import logging
 import whisper
 import re
 from typing import List, Dict, Any, Tuple
 from ..core.config import settings
 from ..models.schemas import TranscriptSegment
 from .speaker_diarization import SpeakerDiarization
+
+logger = logging.getLogger(__name__)
 
 
 class TranscriptionService:
@@ -144,28 +147,36 @@ class TranscriptionService:
         
         return False, None
 
-    def transcribe_and_save(self, session_id: int, audio_path: str, db):
-        segments = self.transcribe_segment(audio_path)
-        
-        from ..core.database import Transcript
-        
-        for seg in segments:
-            transcript = Transcript(
-                session_id=session_id,
-                speaker=seg.speaker,
-                speaker_role=seg.speaker_role,
-                start_time=seg.start_time,
-                end_time=seg.end_time,
-                text=seg.text,
-                confidence=seg.confidence,
-                is_anatomical_term=seg.is_anatomical_term,
-                anatomical_terms=seg.anatomical_terms,
-                is_surgery_step=seg.is_surgery_step,
-                surgery_step=seg.surgery_step
-            )
-            db.add(transcript)
-        
-        db.commit()
+    def transcribe_and_save(self, session_id: int, audio_path: str):
+        from ..core.database import Transcript, SessionLocal
+
+        db = SessionLocal()
+        try:
+            segments = self.transcribe_segment(audio_path)
+
+            for seg in segments:
+                transcript = Transcript(
+                    session_id=session_id,
+                    speaker=seg.speaker,
+                    speaker_role=seg.speaker_role,
+                    start_time=seg.start_time,
+                    end_time=seg.end_time,
+                    text=seg.text,
+                    confidence=seg.confidence,
+                    is_anatomical_term=seg.is_anatomical_term,
+                    anatomical_terms=seg.anatomical_terms,
+                    is_surgery_step=seg.is_surgery_step,
+                    surgery_step=seg.surgery_step
+                )
+                db.add(transcript)
+
+            db.commit()
+        except Exception:
+            logger.exception("后台转写任务写库失败: session_id=%s", session_id)
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     def get_surgery_timeline(self, segments: List[TranscriptSegment]) -> List[Dict[str, Any]]:
         timeline = []

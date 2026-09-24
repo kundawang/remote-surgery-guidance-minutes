@@ -25,8 +25,7 @@ async def transcribe_audio(
     background_tasks.add_task(
         transcription_service.transcribe_and_save,
         session_id=session.id,
-        audio_path=audio_file_path,
-        db=db
+        audio_path=audio_file_path
     )
     
     return {"message": "转写任务已开始", "session_id": session_id}
