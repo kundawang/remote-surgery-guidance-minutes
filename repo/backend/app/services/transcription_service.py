@@ -1,4 +1,3 @@
-import whisper
 import re
 from typing import List, Dict, Any, Tuple
 from ..core.config import settings
@@ -43,6 +42,7 @@ class TranscriptionService:
 
     def load_model(self):
         if self.model is None:
+            import whisper
             self.model = whisper.load_model(self.model_name)
         return self.model
 
@@ -145,27 +145,62 @@ class TranscriptionService:
         return False, None
 
     def transcribe_and_save(self, session_id: int, audio_path: str, db):
-        segments = self.transcribe_segment(audio_path)
-        
         from ..core.database import Transcript
-        
-        for seg in segments:
-            transcript = Transcript(
-                session_id=session_id,
-                speaker=seg.speaker,
-                speaker_role=seg.speaker_role,
-                start_time=seg.start_time,
-                end_time=seg.end_time,
-                text=seg.text,
-                confidence=seg.confidence,
-                is_anatomical_term=seg.is_anatomical_term,
-                anatomical_terms=seg.anatomical_terms,
-                is_surgery_step=seg.is_surgery_step,
-                surgery_step=seg.surgery_step
-            )
-            db.add(transcript)
-        
-        db.commit()
+        from ..core.database import SurgerySession
+
+        session = db.query(SurgerySession).filter(
+            SurgerySession.id == session_id
+        ).first()
+
+        try:
+            if session is not None:
+                session.status = "processing"
+                session.error_message = None
+                db.commit()
+
+            segments = self.transcribe_segment(audio_path)
+
+            if not segments:
+                if session is not None:
+                    session.status = "no_valid_speech"
+                    session.error_message = "未检测到有效语音：转写结果为空，音频可能全为环境噪声"
+                    db.commit()
+                return
+
+            speaker_map = {}
+            if session is not None:
+                speaker_map = self.speaker_diarization.resolve_session_speakers(
+                    db, session_id, [seg.speaker for seg in segments]
+                )
+
+            for seg in segments:
+                resolved = speaker_map.get(seg.speaker)
+                transcript = Transcript(
+                    session_id=session_id,
+                    speaker=resolved.name if resolved is not None else seg.speaker,
+                    speaker_role=seg.speaker_role,
+                    start_time=seg.start_time,
+                    end_time=seg.end_time,
+                    text=seg.text,
+                    confidence=seg.confidence,
+                    is_anatomical_term=seg.is_anatomical_term,
+                    anatomical_terms=seg.anatomical_terms,
+                    is_surgery_step=seg.is_surgery_step,
+                    surgery_step=seg.surgery_step
+                )
+                db.add(transcript)
+
+            if session is not None:
+                session.status = "completed"
+                session.error_message = None
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            if session is not None:
+                session.status = "error"
+                session.error_message = f"{type(exc).__name__}: {exc}"[:500]
+                db.commit()
+            raise
 
     def get_surgery_timeline(self, segments: List[TranscriptSegment]) -> List[Dict[str, Any]]:
         timeline = []

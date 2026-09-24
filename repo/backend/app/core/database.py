@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean, JSON, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -31,6 +31,7 @@ class SurgerySession(Base):
     start_time = Column(DateTime, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
     status = Column(String(20), default="active")
+    error_message = Column(Text, nullable=True)
     video_source = Column(String(500))
     audio_source = Column(String(500))
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -39,6 +40,23 @@ class SurgerySession(Base):
     transcripts = relationship("Transcript", back_populates="surgery_session")
     audio_segments = relationship("AudioSegment", back_populates="surgery_session")
     surgery_summary = relationship("SurgerySummary", back_populates="surgery_session", uselist=False)
+    speakers = relationship("Speaker", back_populates="surgery_session")
+
+
+class Speaker(Base):
+    __tablename__ = "speakers"
+    __table_args__ = (
+        UniqueConstraint("session_id", "label", name="uq_speakers_session_label"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("surgery_sessions.id"), index=True)
+    label = Column(String(50))
+    speaker_index = Column(Integer)
+    name = Column(String(100))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    surgery_session = relationship("SurgerySession", back_populates="speakers")
 
 
 class Transcript(Base):
