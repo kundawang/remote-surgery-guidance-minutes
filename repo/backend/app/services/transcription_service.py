@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Tuple
 from ..core.config import settings
 from ..models.schemas import TranscriptSegment
 from .speaker_diarization import SpeakerDiarization
+from ..utils.speaker_matching import attach_speaker_info
 
 
 class TranscriptionService:
@@ -12,6 +13,14 @@ class TranscriptionService:
         self.language = settings.WHISPER_LANGUAGE
         self.model = None
         self.speaker_diarization = SpeakerDiarization()
+        self.speaker_role_map = {
+            "SPEAKER_00": "主刀医生",
+            "SPEAKER_01": "远程专家",
+        }
+        self.role_name_map = {
+            "主刀医生": "主刀医生",
+            "远程专家": "远程专家",
+        }
         
         self.anatomical_terms = [
             "动脉", "静脉", "神经", "肌肉", "肌腱", "韧带", "骨骼", "关节",
@@ -57,66 +66,45 @@ class TranscriptionService:
         )
         
         speaker_segments = self.speaker_diarization.diarize(audio_path)
-        
-        transcript_segments = []
-        
+        speaker_segments = self.speaker_diarization.assign_speaker_roles(
+            speaker_segments, self.speaker_role_map
+        )
+
+        raw_segments = []
         for seg in result["segments"]:
-            start_time = float(seg["start"])
-            end_time = float(seg["end"])
-            text = seg["text"].strip()
-            confidence = float(seg.get("avg_logprob", 0))
-            
-            speaker = self._match_speaker(start_time, end_time, speaker_segments)
-            speaker_role = self._classify_speaker_role(speaker)
-            
+            raw_segments.append({
+                "start_time": float(seg["start"]),
+                "end_time": float(seg["end"]),
+                "text": seg["text"].strip(),
+                "confidence": float(seg.get("avg_logprob", 0)),
+            })
+
+        matched_segments = attach_speaker_info(
+            raw_segments,
+            speaker_segments,
+            role_name_map=self.role_name_map,
+        )
+
+        transcript_segments = []
+        for matched in matched_segments:
+            text = matched["text"]
             is_anatomical, detected_terms = self._detect_anatomical_terms(text)
             is_step, step_name = self._detect_surgery_step(text)
-            
+
             transcript_segments.append(TranscriptSegment(
-                speaker=speaker,
-                speaker_role=speaker_role,
-                start_time=start_time,
-                end_time=end_time,
+                speaker=matched["speaker"],
+                speaker_role=matched["speaker_role"],
+                start_time=matched["start_time"],
+                end_time=matched["end_time"],
                 text=text,
-                confidence=confidence,
+                confidence=matched["confidence"],
                 is_anatomical_term=is_anatomical,
                 anatomical_terms=detected_terms if detected_terms else None,
                 is_surgery_step=is_step,
                 surgery_step=step_name
             ))
-        
+
         return transcript_segments
-
-    def _match_speaker(self, start_time: float, end_time: float, 
-                       speaker_segments: List[Dict[str, Any]]) -> str:
-        if not speaker_segments:
-            return "未知"
-        
-        mid_time = (start_time + end_time) / 2
-        best_match = None
-        best_overlap = 0
-        
-        for seg in speaker_segments:
-            seg_start = seg["start_time"]
-            seg_end = seg["end_time"]
-            
-            overlap_start = max(start_time, seg_start)
-            overlap_end = min(end_time, seg_end)
-            overlap = max(0, overlap_end - overlap_start)
-            
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_match = seg["speaker"]
-        
-        return best_match if best_match else "未知"
-
-    def _classify_speaker_role(self, speaker: str) -> str:
-        if speaker == "SPEAKER_00":
-            return "主刀医生"
-        elif speaker == "SPEAKER_01":
-            return "远程专家"
-        else:
-            return "其他"
 
     def _detect_anatomical_terms(self, text: str) -> Tuple[bool, List[str]]:
         detected = []
