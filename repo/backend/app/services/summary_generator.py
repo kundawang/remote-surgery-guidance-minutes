@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from ..core.config import settings
 from ..models.schemas import TranscriptSegment, SurgerySummaryResponse
+from ..utils.time_utils import format_timestamp
 
 
 class SummaryGenerator:
@@ -116,10 +117,8 @@ class SummaryGenerator:
             lines.append(f"{time_str} {speaker}: {t.text}")
         return "\n".join(lines)
 
-    def _format_time(self, seconds: float) -> str:
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins:02d}:{secs:02d}"
+    def _format_time(self, seconds) -> str:
+        return format_timestamp(seconds)
 
     def _extract_key_points(self, transcripts: List[TranscriptSegment]) -> List[str]:
         key_points = []

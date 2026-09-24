@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 from jinja2 import Template
 from ..core.config import settings
 from ..models.schemas import TranscriptSegment, SurgerySummaryResponse
+from ..utils.time_utils import format_timestamp
 
 
 class EmailArchiver:
@@ -66,7 +67,7 @@ class EmailArchiver:
 <body>
     <div class="header">
         <h1>🏥 达芬奇手术纪要系统</h1>
-        <p>手术记录归档 | 记录编号: {{ session.session_id }} | 生成时间: {{ generated_at }}</p>
+        <p>手术记录归档 | 记录编号: {{ session.session_id }} | 会议时间: {{ meeting_time }} | 生成时间: {{ generated_at }}</p>
     </div>
 
     <div class="section">
@@ -187,10 +188,16 @@ class EmailArchiver:
 </html>
         """)
 
-    def format_time(self, seconds: float) -> str:
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins:02d}:{secs:02d}"
+    def format_time(self, seconds) -> str:
+        return format_timestamp(seconds)
+
+    def _meeting_time(self, session: Any) -> str:
+        start_time = getattr(session, "start_time", None)
+        if start_time is None or start_time == "":
+            return "未记录"
+        if isinstance(start_time, datetime):
+            return start_time.strftime("%Y-%m-%d %H:%M:%S")
+        return str(start_time)
 
     def archive_surgery_record(
         self,
@@ -252,6 +259,7 @@ class EmailArchiver:
             session=session,
             summary=summary,
             transcripts=transcripts,
+            meeting_time=self._meeting_time(session),
             generated_at=generated_at,
             format_time=self.format_time
         )
@@ -263,6 +271,7 @@ class EmailArchiver:
         lines.append("达芬奇手术纪要系统 - 手术记录")
         lines.append("=" * 60)
         lines.append(f"记录编号: {session.session_id}")
+        lines.append(f"会议时间: {self._meeting_time(session)}")
         lines.append(f"患者: {session.patient_name} (ID: {session.patient_id})")
         lines.append(f"手术类型: {session.surgery_type}")
         lines.append(f"主刀医生: {session.primary_surgeon}")
